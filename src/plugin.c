@@ -57,6 +57,8 @@ static char *argv[NARGV] = {
 };
 
 static XfcePanelPlugin *xfce_plugin = NULL;
+static GtkFrame *frame = NULL;
+static GtkBox *wad_box = NULL;
 static GtkDrawingArea *display = NULL;
 
 static GDateTime *dt_start;
@@ -104,43 +106,11 @@ void about(XfcePanelPlugin *plugin, gpointer user_data)
 void on_wad_selection_changed(GtkFileChooser *chooser, gpointer user_data)
 {
 	gchar *wad_fname = gtk_file_chooser_get_filename(chooser);
-	if (!(g_str_has_suffix(wad_fname, ".WAD") || g_str_has_suffix(wad_fname, ".wad"))) {
-		gtk_file_chooser_set_file(chooser, NULL, NULL);
+	if (!wad_fname || !(g_str_has_suffix(wad_fname, ".WAD") || g_str_has_suffix(wad_fname, ".wad")))
 		return;
-	}
 	g_free(argv[ARGV_IWAD]);
 	argv[ARGV_IWAD] = wad_fname;
 	start_game();
-	(void)user_data;
-}
-
-void configure(XfcePanelPlugin *plugin, gpointer user_data)
-{
-	XfceTitledDialog *dialog = XFCE_TITLED_DIALOG(xfce_titled_dialog_new_with_mixed_buttons(
-		"DooM Options",
-		GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(plugin))),
-		GTK_DIALOG_DESTROY_WITH_PARENT,
-		"window-close-symbolic",
-		_("_Close"),
-		GTK_RESPONSE_OK,
-		NULL));
-	g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
-
-	GtkFrame *frame = GTK_FRAME(gtk_frame_new(NULL));
-	gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), GTK_WIDGET(frame));
-
-	GtkGrid *grid = GTK_GRID(gtk_grid_new());
-	gtk_container_add(GTK_CONTAINER(frame), GTK_WIDGET(grid));
-
-	GtkLabel *wad_label = GTK_LABEL(gtk_label_new("WAD:"));
-	gtk_grid_attach(grid, GTK_WIDGET(wad_label), 0, 0, 1, 1);
-
-	GtkFileChooserButton *wad_file = GTK_FILE_CHOOSER_BUTTON(gtk_file_chooser_button_new("WAD", GTK_FILE_CHOOSER_ACTION_OPEN));
-	gtk_widget_set_hexpand(GTK_WIDGET(wad_file), TRUE);
-	gtk_grid_attach(grid, GTK_WIDGET(wad_file), 1, 0, 1, 1);
-	g_signal_connect(G_OBJECT(wad_file), "selection-changed", G_CALLBACK(on_wad_selection_changed), NULL);
-
-	gtk_widget_show_all(GTK_WIDGET(dialog));
 	(void)user_data;
 }
 
@@ -248,22 +218,11 @@ gboolean main_loop_iter(gpointer user_data)
 
 void start_game(void)
 {
-	static gboolean is_running = FALSE;
-	if (!argv[ARGV_IWAD] || is_running)
+	if (!argv[ARGV_IWAD])
 		return;
-	doomgeneric_Create(NARGV, (char **)argv);
-	g_timeout_add(16, G_SOURCE_FUNC(main_loop_iter), NULL);
-	is_running = TRUE;
-}
 
-void construct(XfcePanelPlugin *plugin)
-{
-	xfce_plugin = plugin;
-
-	GtkFrame *frame = GTK_FRAME(gtk_frame_new(NULL));
-	gtk_widget_set_vexpand(GTK_WIDGET(frame), TRUE);
-	gtk_container_add(GTK_CONTAINER(plugin), GTK_WIDGET(frame));
-	xfce_panel_plugin_add_action_widget(plugin, GTK_WIDGET(frame));
+	gtk_container_remove(GTK_CONTAINER(frame), GTK_WIDGET(wad_box));
+	wad_box = NULL;
 
 	GtkWidget *event_box = gtk_event_box_new();
 	gtk_container_add(GTK_CONTAINER(frame), GTK_WIDGET(event_box));
@@ -277,11 +236,34 @@ void construct(XfcePanelPlugin *plugin)
 	g_signal_connect(G_OBJECT(display), "draw", G_CALLBACK(on_draw), NULL);
 	g_signal_connect(G_OBJECT(display), "size-allocate", G_CALLBACK(on_size_allocate), NULL);
 
+	gtk_widget_show_all(event_box);
+
+	doomgeneric_Create(NARGV, (char **)argv);
+	g_timeout_add(16, G_SOURCE_FUNC(main_loop_iter), NULL);
+}
+
+void construct(XfcePanelPlugin *plugin)
+{
+	xfce_plugin = plugin;
+
+	frame = GTK_FRAME(gtk_frame_new(NULL));
+	gtk_widget_set_vexpand(GTK_WIDGET(frame), TRUE);
+	gtk_container_add(GTK_CONTAINER(plugin), GTK_WIDGET(frame));
+	xfce_panel_plugin_add_action_widget(plugin, GTK_WIDGET(frame));
+
+	wad_box = GTK_BOX(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0));
+	gtk_container_add(GTK_CONTAINER(frame), GTK_WIDGET(wad_box));
+
+	GtkLabel *wad_label = GTK_LABEL(gtk_label_new("WAD: "));
+	gtk_container_add(GTK_CONTAINER(wad_box), GTK_WIDGET(wad_label));
+
+	GtkFileChooserButton *wad_file_chooser_button = GTK_FILE_CHOOSER_BUTTON(gtk_file_chooser_button_new("WAD", GTK_FILE_CHOOSER_ACTION_OPEN));
+	gtk_container_add(GTK_CONTAINER(wad_box), GTK_WIDGET(wad_file_chooser_button));
+	g_signal_connect(G_OBJECT(wad_file_chooser_button), "selection-changed", G_CALLBACK(on_wad_selection_changed), NULL);
+
 	xfce_panel_plugin_menu_show_about(plugin);
-	xfce_panel_plugin_menu_show_configure(plugin);
 	g_signal_connect(G_OBJECT(plugin), "about", G_CALLBACK(about), NULL);
 	g_signal_connect(G_OBJECT(plugin), "free-data", G_CALLBACK(free_data), NULL);
-	g_signal_connect(G_OBJECT(plugin), "configure-plugin", G_CALLBACK(configure), NULL);
 
 	inputs = g_array_new(FALSE, FALSE, sizeof(unsigned char));
 
