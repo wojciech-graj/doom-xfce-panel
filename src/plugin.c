@@ -27,8 +27,11 @@ static void construct(XfcePanelPlugin *plugin);
 static void free_data(XfcePanelPlugin *plugin, gpointer data);
 static void about(XfcePanelPlugin *plugin, gpointer data);
 
+static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
+
 static void on_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer user_data);
 static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data);
+static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data);
 
 static void free_image(void);
 
@@ -41,15 +44,19 @@ static const char *argv[] = {"./doom-plugin", "-iwad", "/home/wojtek/Documents/c
 
 static guint width, height, dx, dy;
 static guint32 *pixels = NULL;
-static cairo_surface_t* image_surface = NULL;
-static cairo_pattern_t* pattern;
-static gboolean on_key_press(GtkWidget *widget, GdkEvent *event, gpointer user_data);
+static cairo_surface_t *image_surface = NULL;
+static cairo_pattern_t *pattern = NULL;
+
+static GArray *inputs;
+static gboolean input_state[256] = {0};
 
 XFCE_PANEL_PLUGIN_REGISTER(construct);
 
 void free_data(XfcePanelPlugin *plugin, gpointer data)
 {
 	free_image();
+	g_array_free(inputs, TRUE);
+	g_date_time_unref(dt_start);
 }
 
 void about(XfcePanelPlugin *plugin, gpointer data)
@@ -78,14 +85,50 @@ void on_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer user
 
 gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data)
 {
+	gtk_widget_grab_focus(widget);
 	cairo_set_source(cr, pattern);
 	cairo_paint(cr);
 	return FALSE;
 }
 
-gboolean on_key_press(GtkWidget *widget, GdkEvent *event, gpointer user_data)
+gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 {
+	unsigned char doomKey;
+
+	switch (event->keyval) {
+	case GDK_KEY_Right: doomKey = KEY_RIGHTARROW; break;
+	case GDK_KEY_Left: doomKey = KEY_LEFTARROW; break;
+	case GDK_KEY_Up: doomKey = KEY_UPARROW; break;
+	case GDK_KEY_Down: doomKey = KEY_DOWNARROW; break;
+	case GDK_KEY_Escape: doomKey = KEY_ESCAPE; break;
+	case GDK_KEY_Return: doomKey = KEY_ENTER; break;
+	case GDK_KEY_Tab: doomKey = KEY_TAB; break;
+	case GDK_KEY_BackSpace: doomKey = KEY_BACKSPACE; break;
+	case GDK_KEY_Shift_L: case GDK_KEY_Shift_R: doomKey = KEY_RSHIFT; break;
+	case GDK_KEY_Alt_L: case GDK_KEY_Alt_R: doomKey = KEY_RALT; break;
+	case GDK_KEY_Control_L: case GDK_KEY_Control_R: doomKey = KEY_RCTRL; break;
+	default:
+		if (g_ascii_isgraph(event->keyval))
+			doomKey = g_ascii_tolower(event->keyval);
+		else
+			return TRUE;
+	}
+
+	gboolean pressed = event->type == GDK_KEY_PRESS;
+	if (pressed && input_state[doomKey])
+		return TRUE;
+
+	input_state[doomKey] = pressed;
+	g_array_append_val(inputs, doomKey);
 	return TRUE;
+}
+
+gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
+{
+	if (event->button != 3)
+		xfce_panel_plugin_focus_widget(xfce_plugin, GTK_WIDGET(display));
+
+	return FALSE;
 }
 
 gboolean main_loop_iter(gpointer user_data)
@@ -100,20 +143,27 @@ void construct(XfcePanelPlugin *plugin)
 
 	GtkFrame *frame = GTK_FRAME(gtk_frame_new(NULL));
 	gtk_widget_set_vexpand(GTK_WIDGET(frame), TRUE);
-	gtk_widget_set_can_focus(GTK_WIDGET(frame), TRUE);
+
 	gtk_container_add(GTK_CONTAINER(plugin), GTK_WIDGET(frame));
 	xfce_panel_plugin_add_action_widget(plugin, GTK_WIDGET(frame));
-	//g_signal_connect(G_OBJECT(frame), "key-press-event", G_CALLBACK(on_key_press), NULL);
+
+	GtkWidget *event_box = gtk_event_box_new();
+	gtk_container_add(GTK_CONTAINER(frame), GTK_WIDGET(event_box));
+	g_signal_connect(G_OBJECT(event_box), "button-press-event", G_CALLBACK(on_button_press), NULL);
 
 	display = GTK_DRAWING_AREA(gtk_drawing_area_new());
-	gtk_container_add(GTK_CONTAINER(frame), GTK_WIDGET(display));
-
+	gtk_widget_set_can_focus(GTK_WIDGET(display), TRUE);
+	gtk_container_add(GTK_CONTAINER(event_box), GTK_WIDGET(display));
+	g_signal_connect(G_OBJECT(display), "key-press-event", G_CALLBACK(on_key_press), NULL);
+	g_signal_connect(G_OBJECT(display), "key-release-event", G_CALLBACK(on_key_press), NULL);
 	g_signal_connect(G_OBJECT(display), "draw", G_CALLBACK(on_draw), NULL);
 	g_signal_connect(G_OBJECT(display), "size-allocate", G_CALLBACK(on_size_allocate), NULL);
 
 	xfce_panel_plugin_menu_show_about(plugin);
 	g_signal_connect(G_OBJECT(plugin), "about", G_CALLBACK(about), NULL);
 	g_signal_connect(G_OBJECT(plugin), "free-data", G_CALLBACK(free_data), NULL);
+
+	inputs = g_array_new(FALSE, FALSE, sizeof(unsigned char));
 
 	gtk_widget_show_all(GTK_WIDGET(frame));
 
@@ -151,7 +201,12 @@ uint32_t DG_GetTicksMs()
 
 int DG_GetKey(int* pressed, unsigned char* doomKey)
 {
-	return 0;
+	if (!inputs->len)
+		return 0;
+	*doomKey = g_array_index(inputs, unsigned char, inputs->len - 1);
+	*pressed = input_state[*doomKey];
+	g_array_remove_index(inputs, inputs->len - 1);
+	return 1;
 }
 
 void DG_SetWindowTitle(const char *title)
