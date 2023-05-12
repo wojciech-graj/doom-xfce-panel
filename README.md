@@ -1,48 +1,46 @@
-# xfce4-python-sample-plugin
-A Sample/Template project to demonstrate the implementation of Xfce4 Panel plugin in Python.
+# DOOM-Xfce-panel
 
-# Requirements
-- meson
-- libgtk3-dev
-- libxfce4panel-2.0-dev
-- python-gi-dev
+**DOOM in your taskbar!**
 
-# How To Use
-To use this repository for contructing a full fledged plugin you need to
-- Change the `plugin_id` in `meson.build` with Your Unique Plugin Name
-- Make sure the python plugin exists as `src/<plugin_id>.py`
-- Code your plugin in `src/<plugin_id>.py`
-- Make sure to instruct Meson to copy extra Python files you may wrote. Eg: \
-  `install_data('src/utils.py', install_dir: py_plugin_path + '/src')` \
-  if you happen to create a `utils.py` next to `src/<PLUGIN_ID>.py` and plan to import it
+![SCREENSHOT](screenshots/screenshot_0.png)
+![SCREENSHOT](screenshots/screenshot_1.png)
 
-# Building
-Make sure you have installed [Meson](https://mesonbuild.com/Quick-guide.html).
-To setup the build environment, run the following in your repository root:
+Source-port of [doomgeneric](https://github.com/ozkl/doomgeneric). Does not have sound.
+
+You will need a WAD file (game data). If you don't own the game, the shareware version is freely available.
+
+## Requirements
+
+Ensure you are using the Xfce desktop environment.
+
+The names listed below correspond to debian packages that must be installed with `apt`.
+
+- `meson`
+- `libgtk3-dev`
+- `libxfce4panel-2.0-dev`
+- `libxfce4ui-2-dev`
+- `libxfce4util-dev`
+
+## Building
+
+Run the following commands:
 
 ```shell
 meson setup --prefix=/usr builddir
-```
-
-The name `builddir` is arbitrary. You can choose whatever name you'd like. Intermediate build files of Meson will end up there.
-
-To compile and install your plugin, run:
-
-```shell
 sudo meson install -C builddir
 ```
 
-Sudo privileges are most likely required, as we're asking Meson to install files to `/usr/lib/xfce4/`.
+Make sure to restart your panel instance afterwards: `xfce4-panel -r`. The plugin should appear as "DooM" in the panel's "Add items..." dialog.
 
-Make sure to restart your panel instance afterwards: `xfce4-panel -r`
+## Playing
 
-The plugin should appear as an item in the panel's "Add items..." dialog.
+After selecting a `.WAD` file using the provided button, the game will start. The plugin has to be focused to accept keyboard input, which can be done by clicking on it.
 
-# Debugging
-If you encounter problems, for instance, your installed plugin does not show up in the "Add Items" dialog, the logs of `xfce4-panel` may shed some light. To see them, start the panel with debug output enabled:
+The controls are based on the "Default controls" found [here](https://doom.fandom.com/wiki/Controls).
 
-```shell
-PANEL_DEBUG=1 xfce4-panel
-```
+## Credits
 
-You may have to kill the running instance first (`xfce4-panel -q`).
+A huge thank you goes out to:
+
+- [Alexander Schwinn](https://gitlab.xfce.org/alexxcons) for creating the [xfce4-python-sample-plugin](https://gitlab.xfce.org/itsManjeet/xfce4-python-sample-plugin).
+- [ozkl](https://github.com/ozkl) for creating [doomgeneric](https://github.com/ozkl/doomgeneric).
