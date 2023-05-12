@@ -18,16 +18,10 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _SAMPLE_PLUGIN_
-#define _SAMPLE_PLUGIN_
+#ifndef _DOOM_PLUGIN_
+#define _DOOM_PLUGIN_
 
 #include <gtk/gtk.h>
 #include <libxfce4panel/libxfce4panel.h>
 
-G_BEGIN_DECLS
-struct Plugin {
-    XfcePanelPlugin *plugin;
-};
-
-G_END_DECLS
-#endif
+#endif /* _DOOM_PLUGIN_ */

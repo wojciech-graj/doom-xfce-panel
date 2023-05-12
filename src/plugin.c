@@ -21,48 +21,44 @@
 #include "plugin.h"
 
 static void construct(XfcePanelPlugin *plugin);
-static void orientation_changed(XfcePanelPlugin *plugin, GtkOrientation orientation, struct Plugin *sample_py);
-static void free_data(XfcePanelPlugin *plugin, struct Plugin *sample_py);
-static void about(XfcePanelPlugin *plugin, struct Plugin *sample_py);
+static void orientation_changed(XfcePanelPlugin *plugin, GtkOrientation orientation, gpointer data);
+static void free_data(XfcePanelPlugin *plugin, gpointer data);
+static void about(XfcePanelPlugin *plugin, gpointer data);
+
+static XfcePanelPlugin *xfce_plugin;
 
 XFCE_PANEL_PLUGIN_REGISTER(construct);
 
-void orientation_changed(XfcePanelPlugin *plugin, GtkOrientation orientation, struct Plugin *sample_py)
+void orientation_changed(XfcePanelPlugin *plugin, GtkOrientation orientation, gpointer data)
 {
 }
 
-void free_data(XfcePanelPlugin *plugin, struct Plugin *sample_py)
+void free_data(XfcePanelPlugin *plugin, gpointer data)
 {
-    g_slice_free(struct Plugin, sample_py);
 }
 
-void about(XfcePanelPlugin *plugin, struct Plugin *sample_py)
+void about(XfcePanelPlugin *plugin, gpointer data)
 {
 }
 
 void construct(XfcePanelPlugin *plugin)
 {
-    struct Plugin *sample_py;
-    GObject *widget;
+	GObject *widget;
 
-    sample_py = g_slice_new0(struct Plugin);
-    sample_py->plugin = plugin;
+	xfce_plugin = plugin;
 
-    widget = G_OBJECT(gtk_label_new("Sample"));
+	widget = G_OBJECT(gtk_label_new("Sample"));
 
-    gtk_widget_show_all(GTK_WIDGET(widget));
+	gtk_widget_show_all(GTK_WIDGET(widget));
 
-    gtk_container_add(GTK_CONTAINER(plugin), GTK_WIDGET(widget));
+	gtk_container_add(GTK_CONTAINER(plugin), GTK_WIDGET(widget));
 
-    xfce_panel_plugin_add_action_widget(plugin, GTK_WIDGET(widget));
+	xfce_panel_plugin_add_action_widget(plugin, GTK_WIDGET(widget));
 
-    xfce_panel_plugin_menu_show_about(plugin);
-    g_signal_connect(G_OBJECT(plugin), "about",
-                     G_CALLBACK(about), sample_py);
+	xfce_panel_plugin_menu_show_about(plugin);
+	g_signal_connect(G_OBJECT(plugin), "about", G_CALLBACK(about), NULL);
 
-    g_signal_connect(G_OBJECT(plugin), "free-data",
-                     G_CALLBACK(free_data), sample_py);
+	g_signal_connect(G_OBJECT(plugin), "free-data", G_CALLBACK(free_data), NULL);
 
-    g_signal_connect(G_OBJECT(plugin), "orientation-changed",
-                     G_CALLBACK(orientation_changed), sample_py);
+	g_signal_connect(G_OBJECT(plugin), "orientation-changed", G_CALLBACK(orientation_changed), NULL);
 }
