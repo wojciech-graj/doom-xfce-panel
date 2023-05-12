@@ -9,11 +9,13 @@ project(
     'b_ndebug=if-release',
     'debug=false',
   ],
-  c_args: [
-    '-DNORMALUNIX',
-    '-DLINUX',
-    '-D_DEFAULT_SOURCE',
-  ],
+)
+
+add_project_arguments(
+  '-DNORMALUNIX',
+  '-DLINUX',
+  '-D_DEFAULT_SOURCE',
+  language : ['c'],
 )
 
 cc = meson.get_compiler('c')
@@ -107,6 +109,8 @@ src = files([
 dependencies = [
 	dependency('gtk+-3.0'),
 	dependency('libxfce4panel-2.0'),
+	dependency('libxfce4util-1.0'),
+	dependency('libxfce4ui-2'),
 	cc.find_library('m'),
 ]
 
@@ -124,5 +128,5 @@ library(plugin_id, src, dependencies: dependencies,
 	install: true,
 	install_dir: plugin_path)
 
-install_data('doom-plugin.svg', install_dir: get_option('prefix') + '/' + get_option('datadir') + '/icons/hicolor/scalable/apps/')
+#install_data('doom-plugin.svg', install_dir: get_option('prefix') + '/' + get_option('datadir') + '/icons/hicolor/scalable/apps/')
 install_data('plugin.desktop', install_dir: get_option('prefix') + '/' + get_option('datadir') + '/xfce4/panel/plugins/', rename: plugin_id + '.desktop')

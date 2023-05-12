@@ -1,9 +1,9 @@
 [Xfce Panel]
 Type=X-XFCE-PanelPlugin
 Encoding=UTF-8
-Name=DooM Plugin
+Name=DooM
 Comment=DooM in your panel
-Icon=doom-plugin
+Icon=input-gaming
 X-XFCE-Module=doom-plugin
 X-XFCE-Internal=false
 X-XFCE-Unique=false

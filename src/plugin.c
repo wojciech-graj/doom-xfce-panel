@@ -18,50 +18,58 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "plugin.h"
+#include "doomgeneric.h"
 #include "doomkeys.h"
 #include "i_system.h"
-#include "doomgeneric.h"
+
+#include <gtk/gtk.h>
+#include <libxfce4panel/libxfce4panel.h>
+#include <libxfce4panel/xfce-panel-plugin.h>
+#include <libxfce4ui/libxfce4ui.h>
+#include <libxfce4util/libxfce4util.h>
 
 static void construct(XfcePanelPlugin *plugin);
-static void free_data(XfcePanelPlugin *plugin, gpointer data);
-static void about(XfcePanelPlugin *plugin, gpointer data);
+static void free_data(XfcePanelPlugin *plugin, gpointer user_data);
+static void about(XfcePanelPlugin *plugin, gpointer user_data);
 
 static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
 
 static void on_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer user_data);
-static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data);
+static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data);
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data);
 
-static void free_image(void);
+static void on_wad_selection_changed(GtkFileChooser *chooser, gpointer user_data);
 
-static XfcePanelPlugin *xfce_plugin;
-static GtkDrawingArea *display;
+static void free_image(void);
+static void start_game(void);
+
+enum Argv {
+	ARGV_BIN = 0,
+	ARGV_FLAG_IWAD,
+	ARGV_IWAD,
+	NARGV,
+};
+
+static char *argv[NARGV] = {
+	[ARGV_BIN] = "./doom-plugin",
+	[ARGV_FLAG_IWAD] = "-iwad",
+	[ARGV_IWAD] = NULL,
+};
+
+static XfcePanelPlugin *xfce_plugin = NULL;
+static GtkDrawingArea *display = NULL;
 
 static GDateTime *dt_start;
-
-static const char *argv[] = {"./doom-plugin", "-iwad", "/home/wojtek/Documents/code/doom-desktop/src/DOOM1.WAD"};
 
 static guint width, height, dx, dy;
 static guint32 *pixels = NULL;
 static cairo_surface_t *image_surface = NULL;
 static cairo_pattern_t *pattern = NULL;
 
-static GArray *inputs;
-static gboolean input_state[256] = {0};
+static GArray *inputs = NULL;
+static gboolean input_state[256] = { 0 };
 
 XFCE_PANEL_PLUGIN_REGISTER(construct);
-
-void free_data(XfcePanelPlugin *plugin, gpointer data)
-{
-	free_image();
-	g_array_free(inputs, TRUE);
-	g_date_time_unref(dt_start);
-}
-
-void about(XfcePanelPlugin *plugin, gpointer data)
-{
-}
 
 void free_image(void)
 {
@@ -70,25 +78,96 @@ void free_image(void)
 	g_free(pixels);
 }
 
+void free_data(XfcePanelPlugin *plugin, gpointer user_data)
+{
+	free_image();
+	g_array_free(inputs, TRUE);
+	g_date_time_unref(dt_start);
+	g_free(argv[ARGV_IWAD]);
+	(void)plugin;
+	(void)user_data;
+}
+
+void about(XfcePanelPlugin *plugin, gpointer user_data)
+{
+	gtk_show_about_dialog(NULL,
+		"logo-icon-name", "input-gaming",
+		"license", xfce_get_license_text(XFCE_LICENSE_TEXT_GPL),
+		"version", "0.1.0",
+		"program-name", "DooM",
+		"comments", _("DooM in the Xfce panel"),
+		"website", "https://github.com/wojciech-graj/doom-xfce-panel",
+		"copyright", "Copyright \302\251 1993-1996 Id Software, Inc.\nCopyright \302\251 2005-2014 Simon Howard\nCopyright \302\251 2023 Wojciech Graj",
+		NULL);
+}
+
+void on_wad_selection_changed(GtkFileChooser *chooser, gpointer user_data)
+{
+	gchar *wad_fname = gtk_file_chooser_get_filename(chooser);
+	if (!(g_str_has_suffix(wad_fname, ".WAD") || g_str_has_suffix(wad_fname, ".wad"))) {
+		gtk_file_chooser_set_file(chooser, NULL, NULL);
+		return;
+	}
+	g_free(argv[ARGV_IWAD]);
+	argv[ARGV_IWAD] = wad_fname;
+	start_game();
+	(void)user_data;
+}
+
+void configure(XfcePanelPlugin *plugin, gpointer user_data)
+{
+	XfceTitledDialog *dialog = XFCE_TITLED_DIALOG(xfce_titled_dialog_new_with_mixed_buttons(
+		"DooM Options",
+		GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(plugin))),
+		GTK_DIALOG_DESTROY_WITH_PARENT,
+		"window-close-symbolic",
+		_("_Close"),
+		GTK_RESPONSE_OK,
+		NULL));
+	g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
+
+	GtkFrame *frame = GTK_FRAME(gtk_frame_new(NULL));
+	gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), GTK_WIDGET(frame));
+
+	GtkGrid *grid = GTK_GRID(gtk_grid_new());
+	gtk_container_add(GTK_CONTAINER(frame), GTK_WIDGET(grid));
+
+	GtkLabel *wad_label = GTK_LABEL(gtk_label_new("WAD:"));
+	gtk_grid_attach(grid, GTK_WIDGET(wad_label), 0, 0, 1, 1);
+
+	GtkFileChooserButton *wad_file = GTK_FILE_CHOOSER_BUTTON(gtk_file_chooser_button_new("WAD", GTK_FILE_CHOOSER_ACTION_OPEN));
+	gtk_widget_set_hexpand(GTK_WIDGET(wad_file), TRUE);
+	gtk_grid_attach(grid, GTK_WIDGET(wad_file), 1, 0, 1, 1);
+	g_signal_connect(G_OBJECT(wad_file), "selection-changed", G_CALLBACK(on_wad_selection_changed), NULL);
+
+	gtk_widget_show_all(GTK_WIDGET(dialog));
+	(void)user_data;
+}
+
 void on_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer user_data)
 {
-	width = allocation->width;
-	height = allocation->height;
+	width = MIN(DOOMGENERIC_RESX, allocation->width);
+	height = MIN(DOOMGENERIC_RESY, allocation->height);
 	dx = DOOMGENERIC_RESX / width;
 	dy = DOOMGENERIC_RESY / height;
 
 	free_image();
-	pixels = g_malloc(width * height * 4);
-	image_surface = cairo_image_surface_create_for_data((unsigned char*)pixels, CAIRO_FORMAT_RGB24, width, height, width * 4);
+	pixels = g_malloc0(width * height * 4);
+	image_surface = cairo_image_surface_create_for_data((unsigned char *)pixels, CAIRO_FORMAT_RGB24, width, height, width * 4);
 	pattern = cairo_pattern_create_for_surface(image_surface);
+
+	gtk_widget_queue_draw(GTK_WIDGET(display));
+	(void)widget;
+	(void)user_data;
 }
 
-gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data)
+gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data)
 {
-	gtk_widget_grab_focus(widget);
 	cairo_set_source(cr, pattern);
 	cairo_paint(cr);
 	return FALSE;
+	(void)widget;
+	(void)user_data;
 }
 
 gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
@@ -96,17 +175,42 @@ gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 	unsigned char doomKey;
 
 	switch (event->keyval) {
-	case GDK_KEY_Right: doomKey = KEY_RIGHTARROW; break;
-	case GDK_KEY_Left: doomKey = KEY_LEFTARROW; break;
-	case GDK_KEY_Up: doomKey = KEY_UPARROW; break;
-	case GDK_KEY_Down: doomKey = KEY_DOWNARROW; break;
-	case GDK_KEY_Escape: doomKey = KEY_ESCAPE; break;
-	case GDK_KEY_Return: doomKey = KEY_ENTER; break;
-	case GDK_KEY_Tab: doomKey = KEY_TAB; break;
-	case GDK_KEY_BackSpace: doomKey = KEY_BACKSPACE; break;
-	case GDK_KEY_Shift_L: case GDK_KEY_Shift_R: doomKey = KEY_RSHIFT; break;
-	case GDK_KEY_Alt_L: case GDK_KEY_Alt_R: doomKey = KEY_RALT; break;
-	case GDK_KEY_Control_L: case GDK_KEY_Control_R: doomKey = KEY_RCTRL; break;
+	case GDK_KEY_Right:
+		doomKey = KEY_RIGHTARROW;
+		break;
+	case GDK_KEY_Left:
+		doomKey = KEY_LEFTARROW;
+		break;
+	case GDK_KEY_Up:
+		doomKey = KEY_UPARROW;
+		break;
+	case GDK_KEY_Down:
+		doomKey = KEY_DOWNARROW;
+		break;
+	case GDK_KEY_Escape:
+		doomKey = KEY_ESCAPE;
+		break;
+	case GDK_KEY_Return:
+		doomKey = KEY_ENTER;
+		break;
+	case GDK_KEY_Tab:
+		doomKey = KEY_TAB;
+		break;
+	case GDK_KEY_BackSpace:
+		doomKey = KEY_BACKSPACE;
+		break;
+	case GDK_KEY_Shift_L:
+	case GDK_KEY_Shift_R:
+		doomKey = KEY_RSHIFT;
+		break;
+	case GDK_KEY_Alt_L:
+	case GDK_KEY_Alt_R:
+		doomKey = KEY_RALT;
+		break;
+	case GDK_KEY_Control_L:
+	case GDK_KEY_Control_R:
+		doomKey = KEY_RCTRL;
+		break;
 	default:
 		if (g_ascii_isgraph(event->keyval))
 			doomKey = g_ascii_tolower(event->keyval);
@@ -121,6 +225,8 @@ gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 	input_state[doomKey] = pressed;
 	g_array_append_val(inputs, doomKey);
 	return TRUE;
+	(void)widget;
+	(void)user_data;
 }
 
 gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
@@ -129,12 +235,25 @@ gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user
 		xfce_panel_plugin_focus_widget(xfce_plugin, GTK_WIDGET(display));
 
 	return FALSE;
+	(void)widget;
+	(void)user_data;
 }
 
 gboolean main_loop_iter(gpointer user_data)
 {
 	doomgeneric_Tick();
 	return TRUE;
+	(void)user_data;
+}
+
+void start_game(void)
+{
+	static gboolean is_running = FALSE;
+	if (!argv[ARGV_IWAD] || is_running)
+		return;
+	doomgeneric_Create(NARGV, (char **)argv);
+	g_timeout_add(16, G_SOURCE_FUNC(main_loop_iter), NULL);
+	is_running = TRUE;
 }
 
 void construct(XfcePanelPlugin *plugin)
@@ -143,7 +262,6 @@ void construct(XfcePanelPlugin *plugin)
 
 	GtkFrame *frame = GTK_FRAME(gtk_frame_new(NULL));
 	gtk_widget_set_vexpand(GTK_WIDGET(frame), TRUE);
-
 	gtk_container_add(GTK_CONTAINER(plugin), GTK_WIDGET(frame));
 	xfce_panel_plugin_add_action_widget(plugin, GTK_WIDGET(frame));
 
@@ -160,16 +278,14 @@ void construct(XfcePanelPlugin *plugin)
 	g_signal_connect(G_OBJECT(display), "size-allocate", G_CALLBACK(on_size_allocate), NULL);
 
 	xfce_panel_plugin_menu_show_about(plugin);
+	xfce_panel_plugin_menu_show_configure(plugin);
 	g_signal_connect(G_OBJECT(plugin), "about", G_CALLBACK(about), NULL);
 	g_signal_connect(G_OBJECT(plugin), "free-data", G_CALLBACK(free_data), NULL);
+	g_signal_connect(G_OBJECT(plugin), "configure-plugin", G_CALLBACK(configure), NULL);
 
 	inputs = g_array_new(FALSE, FALSE, sizeof(unsigned char));
 
 	gtk_widget_show_all(GTK_WIDGET(frame));
-
-	doomgeneric_Create(3, (char**)argv);
-
-	g_timeout_add(16, G_SOURCE_FUNC(main_loop_iter), NULL);
 }
 
 void DG_Init()
@@ -199,7 +315,7 @@ uint32_t DG_GetTicksMs()
 	return diff / 1000LL;
 }
 
-int DG_GetKey(int* pressed, unsigned char* doomKey)
+int DG_GetKey(int *pressed, unsigned char *doomKey)
 {
 	if (!inputs->len)
 		return 0;
