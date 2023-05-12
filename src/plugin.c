@@ -28,18 +28,23 @@
 #include <libxfce4ui/libxfce4ui.h>
 #include <libxfce4util/libxfce4util.h>
 
+/* Plugin */
 static void construct(XfcePanelPlugin *plugin);
 static void free_data(XfcePanelPlugin *plugin, gpointer user_data);
 static void about(XfcePanelPlugin *plugin, gpointer user_data);
 
+/* EventBox [DrawingArea] */
 static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
-
-static void on_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer user_data);
-static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data);
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data);
 
+/* DrawingArea */
+static void on_size_allocate(GtkWidget *widget, GdkRectangle *allocation, gpointer user_data);
+static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data);
+
+/* Wad File Selector */
 static void on_wad_selection_changed(GtkFileChooser *chooser, gpointer user_data);
 
+/* Utils */
 static void free_image(void);
 static void start_game(void);
 
@@ -68,7 +73,7 @@ static guint32 *pixels = NULL;
 static cairo_surface_t *image_surface = NULL;
 static cairo_pattern_t *pattern = NULL;
 
-static GArray *inputs = NULL;
+static GArray *inputs;
 static gboolean input_state[256] = { 0 };
 
 XFCE_PANEL_PLUGIN_REGISTER(construct);
@@ -202,10 +207,9 @@ gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
 {
 	if (event->button != 3)
-		xfce_panel_plugin_focus_widget(xfce_plugin, GTK_WIDGET(display));
+		xfce_panel_plugin_focus_widget(xfce_plugin, widget);
 
 	return FALSE;
-	(void)widget;
 	(void)user_data;
 }
 
@@ -224,27 +228,32 @@ void start_game(void)
 	gtk_container_remove(GTK_CONTAINER(frame), GTK_WIDGET(wad_box));
 	wad_box = NULL;
 
-	GtkWidget *event_box = gtk_event_box_new();
+	/* Create EventBox because DrawingArea does not receive button press events */
+	GtkEventBox *event_box = GTK_EVENT_BOX(gtk_event_box_new());
 	gtk_container_add(GTK_CONTAINER(frame), GTK_WIDGET(event_box));
 	g_signal_connect(G_OBJECT(event_box), "button-press-event", G_CALLBACK(on_button_press), NULL);
+	g_signal_connect(G_OBJECT(event_box), "key-press-event", G_CALLBACK(on_key_press), NULL);
+	g_signal_connect(G_OBJECT(event_box), "key-release-event", G_CALLBACK(on_key_press), NULL);
 
 	display = GTK_DRAWING_AREA(gtk_drawing_area_new());
 	gtk_widget_set_can_focus(GTK_WIDGET(display), TRUE);
 	gtk_container_add(GTK_CONTAINER(event_box), GTK_WIDGET(display));
-	g_signal_connect(G_OBJECT(display), "key-press-event", G_CALLBACK(on_key_press), NULL);
-	g_signal_connect(G_OBJECT(display), "key-release-event", G_CALLBACK(on_key_press), NULL);
 	g_signal_connect(G_OBJECT(display), "draw", G_CALLBACK(on_draw), NULL);
 	g_signal_connect(G_OBJECT(display), "size-allocate", G_CALLBACK(on_size_allocate), NULL);
 
-	gtk_widget_show_all(event_box);
+	gtk_widget_show_all(GTK_WIDGET(event_box));
 
 	doomgeneric_Create(NARGV, (char **)argv);
+	/* Run main loop iteration every 16ms (approx. 60fps) */
 	g_timeout_add(16, G_SOURCE_FUNC(main_loop_iter), NULL);
 }
 
 void construct(XfcePanelPlugin *plugin)
 {
 	xfce_plugin = plugin;
+	xfce_panel_plugin_menu_show_about(plugin);
+	g_signal_connect(G_OBJECT(plugin), "about", G_CALLBACK(about), NULL);
+	g_signal_connect(G_OBJECT(plugin), "free-data", G_CALLBACK(free_data), NULL);
 
 	frame = GTK_FRAME(gtk_frame_new(NULL));
 	gtk_widget_set_vexpand(GTK_WIDGET(frame), TRUE);
@@ -261,13 +270,9 @@ void construct(XfcePanelPlugin *plugin)
 	gtk_container_add(GTK_CONTAINER(wad_box), GTK_WIDGET(wad_file_chooser_button));
 	g_signal_connect(G_OBJECT(wad_file_chooser_button), "selection-changed", G_CALLBACK(on_wad_selection_changed), NULL);
 
-	xfce_panel_plugin_menu_show_about(plugin);
-	g_signal_connect(G_OBJECT(plugin), "about", G_CALLBACK(about), NULL);
-	g_signal_connect(G_OBJECT(plugin), "free-data", G_CALLBACK(free_data), NULL);
+	gtk_widget_show_all(GTK_WIDGET(frame));
 
 	inputs = g_array_new(FALSE, FALSE, sizeof(unsigned char));
-
-	gtk_widget_show_all(GTK_WIDGET(frame));
 }
 
 void DG_Init()
