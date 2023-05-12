@@ -76,7 +76,7 @@ static cairo_pattern_t *pattern = NULL;
 static GArray *inputs;
 static gboolean input_state[256] = { 0 };
 
-XFCE_PANEL_PLUGIN_REGISTER(construct);
+XFCE_PANEL_PLUGIN_REGISTER(construct)
 
 void free_image(void)
 {
@@ -106,6 +106,8 @@ void about(XfcePanelPlugin *plugin, gpointer user_data)
 		"website", "https://github.com/wojciech-graj/doom-xfce-panel",
 		"copyright", "Copyright \302\251 1993-1996 Id Software, Inc.\nCopyright \302\251 2005-2014 Simon Howard\nCopyright \302\251 2023 Wojciech Graj",
 		NULL);
+	(void)plugin;
+	(void)user_data;
 }
 
 void on_wad_selection_changed(GtkFileChooser *chooser, gpointer user_data)
@@ -184,7 +186,10 @@ gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 		break;
 	case GDK_KEY_Control_L:
 	case GDK_KEY_Control_R:
-		doomKey = KEY_RCTRL;
+		doomKey = KEY_FIRE;
+		break;
+	case GDK_KEY_space:
+		doomKey = KEY_USE;
 		break;
 	default:
 		if (g_ascii_isgraph(event->keyval))
@@ -230,13 +235,13 @@ void start_game(void)
 
 	/* Create EventBox because DrawingArea does not receive button press events */
 	GtkEventBox *event_box = GTK_EVENT_BOX(gtk_event_box_new());
+	gtk_widget_set_can_focus(GTK_WIDGET(event_box), TRUE);
 	gtk_container_add(GTK_CONTAINER(frame), GTK_WIDGET(event_box));
 	g_signal_connect(G_OBJECT(event_box), "button-press-event", G_CALLBACK(on_button_press), NULL);
 	g_signal_connect(G_OBJECT(event_box), "key-press-event", G_CALLBACK(on_key_press), NULL);
 	g_signal_connect(G_OBJECT(event_box), "key-release-event", G_CALLBACK(on_key_press), NULL);
 
 	display = GTK_DRAWING_AREA(gtk_drawing_area_new());
-	gtk_widget_set_can_focus(GTK_WIDGET(display), TRUE);
 	gtk_container_add(GTK_CONTAINER(event_box), GTK_WIDGET(display));
 	g_signal_connect(G_OBJECT(display), "draw", G_CALLBACK(on_draw), NULL);
 	g_signal_connect(G_OBJECT(display), "size-allocate", G_CALLBACK(on_size_allocate), NULL);
