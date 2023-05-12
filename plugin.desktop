@@ -1,0 +1,10 @@
+[Xfce Panel]
+Type=X-XFCE-PanelPlugin
+Encoding=UTF-8
+Name=Python Sample Plugin
+Comment=Sample Plugin in python
+Icon=python-sample-plugin
+X-XFCE-Module=python-sample-plugin
+X-XFCE-Internal=false
+X-XFCE-Unique=false
+X-XFCE-API=2.0
